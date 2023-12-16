@@ -84,7 +84,7 @@ class MapFreeScene(data.Dataset):
                 min_overlap, max_overlap = overlap_limits
                 mask = (overlaps > min_overlap) * (overlaps < max_overlap)
                 idxs = idxs[mask]
-                return idxs.copy()
+            return idxs.copy()
         else:
             idxs = np.zeros((len(self.poses) - 1, 4), dtype=np.uint16)
             idxs[:, 2] = 1
@@ -152,7 +152,7 @@ class MapFreeScene(data.Dataset):
             'dataset_name': 'Mapfree',
             'scene_id': self.scene_root.stem,
             'scene_root': str(self.scene_root),
-            'pair_id': index*self.sample_factor,
+            'pair_id': index * self.sample_factor,
             'pair_names': (im1_path, im2_path),
             'sim': 0.  # needed for 7Scenes eval compatibility
         }
