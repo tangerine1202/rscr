@@ -11,7 +11,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from config.default import cfg
 from lib.datasets.datamodules import DataModule
-from lib.models.regression.model import RegressionModel
+from lib.models.regression.model import RegressionModel, RSCRegressionModel
 
 
 def main(args):
@@ -19,7 +19,7 @@ def main(args):
     cfg.merge_from_file(args.config)
 
     datamodule = DataModule(cfg)
-    model = RegressionModel(cfg)
+    model = eval(f'{cfg.MODEL}Model')(cfg)
 
     logger = TensorBoardLogger(save_dir='weights', name=args.experiment)
 

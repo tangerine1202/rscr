@@ -1,5 +1,6 @@
 import math
 import inspect
+import logging
 
 import torch
 import torch.nn.functional as F
@@ -64,7 +65,7 @@ def data_wrapper(func):
             t_direction_gt = F.normalize(arguments['tgt'], dim=-1).reshape(-1, 3)
             t_sph_theta_gt = torch.acos(t_direction_gt[:, 2])
             t_sph_phi_gt = torch.atan2(t_direction_gt[:, 1], t_direction_gt[:, 0] + 1e-5)
-            t_sph_phi_gt[t_sph_phi_gt < 0] += 2*math.pi
+            t_sph_phi_gt[t_sph_phi_gt < 0] += 2 * math.pi
             t_sph_theta_gt = torch.clamp(torch.round(torch.rad2deg(t_sph_theta_gt)).long(), 0, 179)
             t_sph_phi_gt = torch.round(torch.rad2deg(t_sph_phi_gt)).long()
             t_sph_phi_gt[t_sph_phi_gt == 360] = 0
@@ -239,3 +240,98 @@ def trans_scale_l1_loss(scale, scalegt):
 @data_wrapper
 def empty_loss(tgt):
     return torch.zeros(1, device=tgt.device, dtype=torch.float32)
+
+# RSCR loss
+
+
+def self_repro_loss(data, uvgt_B2HW):
+    """Computes self-reprojection loss between uv and uvgt
+    Input:
+    data - dictionary with keys:
+        'cross_xyz' - RSC [B, 3, H, W]
+        'self_uv' - reprojected uv coordinates of the same image [B, 2, H, W]
+        'K_color1' - camera intrinsics [B, 3, 3]
+    uvgt - ground-truth uv coordinates [B, 2, ...]
+    Output: reprojection_loss
+    """
+
+    DEPTH_MIN = 0.1
+    DEPTH_MAX = 1000
+    DEPTH_TARGET = 10
+    REPRO_LOSS_HARD_CLAMP = 1000
+    # REPRO_LOSS_SOFT_CLAMP = 50
+
+    B, _, H, W = uvgt_B2HW.shape
+    N = H * W
+
+    assert data['cross_xyz'].shape == (B, 3, H, W)
+    assert data['self_uv'].shape == (B, 2, H, W)
+    assert data['K_color1'].shape == (B, 3, 3)
+
+    cross_xyz_B3HW = data['cross_xyz']
+    cross_xyz_B3N = cross_xyz_B3HW.view(B, 3, -1)
+    self_uv_B2HW = data['self_uv']
+    self_uv_B2N = self_uv_B2HW.view(B, 2, -1)
+
+    self_K_B33 = data['K_color1'].float()
+    self_invK_B33 = torch.inverse(self_K_B33)
+
+    uvgt_B2N = uvgt_B2HW.view(B, 2, -1)
+    # Handle the invalid predictions: generate proxy coordinate targets with constant depth assumption.
+    dummy_xyz_B3HW = torch.cat([uvgt_B2HW, torch.ones_like(uvgt_B2HW[:, :1])], dim=1)
+    dummy_xyz_B3N = dummy_xyz_B3HW.view(B, 3, -1)
+    dummy_xyz_B3N = DEPTH_TARGET * torch.bmm(self_invK_B33, dummy_xyz_B3N)
+
+    assert self_uv_B2N.shape == (B, 2, N)
+    assert cross_xyz_B3N.shape == (B, 3, N)
+    assert self_K_B33.shape == (B, 3, 3)
+    assert self_invK_B33.shape == (B, 3, 3)
+
+    assert uvgt_B2HW.shape == (B, 2, H, W)
+    assert dummy_xyz_B3HW.shape == (B, 3, H, W)
+    assert dummy_xyz_B3N.shape == (B, 3, N)
+
+    repro_errs_BN = torch.norm(self_uv_B2N - uvgt_B2N, dim=1, p=1)
+    assert repro_errs_BN.shape == (B, N)
+
+    #
+    # Compute masks used to ignore invalid pixels.
+    #
+    # Predicted coordinates behind or close to camera plane.
+    invalid_min_depth_BN = cross_xyz_B3N[:, 2] <= DEPTH_MIN
+    # Predicted coordinates beyond max distance.
+    invalid_max_depth_BN = cross_xyz_B3N[:, 2] > DEPTH_MAX
+    # Very large reprojection errors.
+    invalid_repro_BN = repro_errs_BN > REPRO_LOSS_HARD_CLAMP
+    # Invalid mask is the union of all these. Valid mask is the opposite.
+    invalid_mask_BN = (invalid_min_depth_BN | invalid_repro_BN | invalid_max_depth_BN)
+    valid_mask_BN = ~invalid_mask_BN
+    assert invalid_mask_BN.shape == (B, N)
+
+    # valid reprojection error
+    valid_repro_errs = repro_errs_BN[valid_mask_BN]
+    loss_valid = valid_repro_errs
+
+    # Compute the distance to target camera coordinates.
+    loss_invalid = torch.norm(cross_xyz_B3N - dummy_xyz_B3N, dim=1, p=2).masked_select(invalid_mask_BN)
+
+    assert len(loss_valid) + len(loss_invalid) == B * N
+    n_fails_in_loss_valid = torch.isnan(loss_valid).sum() + torch.isinf(loss_valid).sum()
+    n_fails_in_loss_invalid = torch.isnan(loss_invalid).sum() + torch.isinf(loss_invalid).sum()
+    if n_fails_in_loss_valid > 0:
+        logging.warning(f'{n_fails_in_loss_valid} NaNs or INFs in loss_valid')
+    if n_fails_in_loss_invalid > 0:
+        logging.warning(f'{n_fails_in_loss_invalid} NaNs or INFs in loss_invalid')
+
+    loss = loss_valid.sum() + loss_invalid.sum()
+    loss = loss / (B * N)
+
+    info = {
+        'total_count': B * N,
+        'valid_count': len(loss_valid),
+        'invalid_count': len(loss_invalid),
+        'valid_mean': loss_valid.mean().item() if len(loss_valid) > 0 else 0.0,
+        'invalid_mean': loss_invalid.mean().item() if len(loss_invalid) > 0 else 0.0,
+    }
+
+    return loss, info

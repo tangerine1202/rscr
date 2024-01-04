@@ -3,7 +3,7 @@ from yacs.config import CfgNode as CN
 _CN = CN()
 
 ##############  Model    ##############
-_CN.MODEL = None  # options: ['Regression', 'FeatureMatching']
+_CN.MODEL = None  # options: ['Regression', 'FeatureMatching', 'RSCRegression']
 _CN.DEBUG = False
 
 # Regression model options
@@ -109,7 +109,7 @@ _CN.TRAINING.GRAD_CLIP = 0.   #  Indicates the L2 norm at which to clip the grad
 _CN.TRAINING.ROT_LOSS = 'rot_frobenius_loss'  # options: ['rot_frobenius_loss', 'rot_l1_loss', 'rot_angle_loss']
 _CN.TRAINING.TRANS_LOSS = 'trans_l2_loss'     # options: ['trans_l2_loss', 'trans_ang_loss']
 _CN.TRAINING.LAMBDA = 1.0  # scaling term for the translation loss term. If 0.0, learns optimal weighting.
-
+_CN.TRAINING.SELF_REPRO_LOSS = None  # options: []
 
 
 cfg = _CN
