@@ -8,6 +8,7 @@ tmp/
 data/
 outputs/
 results/
+weights/
 
 # scripts for running experiments
 .idea/

@@ -87,21 +87,23 @@ def eval(args):
     results_dict = predict(dataloader, model)
 
     # Save predictions to txt per scene within zip
-    args.output_root.mkdir(parents=True, exist_ok=True)
-    save_submission(results_dict, args.output_root / 'submission.zip')
+    output_dir = args.output_root / args.split
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f'{args.output_name}.zip'
+    save_submission(results_dict, output_path)
+    print(f'Saved submission to {output_path}')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('config', help='path to config file')
-    parser.add_argument(
-        '--checkpoint', help='path to model checkpoint (models with learned parameters)',
-        default='')
+    parser.add_argument('--checkpoint', default='',
+                        help='path to model checkpoint (models with learned parameters)')
+    parser.add_argument('--split', choices=('val', 'test'), default='val',
+                        help='Dataset split to use for evaluation. Choose from test or val.')
     parser.add_argument('--output_root', '-o', type=Path, default=Path('results/'))
-    parser.add_argument(
-        '--split', choices=('val', 'test'),
-        default='test',
-        help='Dataset split to use for evaluation. Choose from test or val. Default: test')
+    parser.add_argument('--output_name', '-n', type=str, default='submission',
+                        help='name of the output zip file')
 
     args = parser.parse_args()
     eval(args)

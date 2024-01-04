@@ -1,4 +1,7 @@
+import cv2
 import torch
+
+import logging
 
 
 def procrustes(A, B):
@@ -26,7 +29,14 @@ def procrustes(A, B):
     B_c = B - b_mean
     # Covariance matrix
     H = A_c.transpose(1, 2) @ B_c
-    U, S, V = torch.svd(H)
+
+    # FIXME: torch.svd on GPU has bugs that cause Segmentation Fault.
+    #        Move to CPU as workaround for now.
+    # U, S, V = torch.svd(H)
+    U, S, V = torch.svd(H.cpu())
+    U = U.to(A.device)
+    V = V.to(A.device)
+
     # Fixes orientation such that Det(R) = + 1
     Z = torch.eye(3).unsqueeze(0).repeat(A.shape[0], 1, 1).to(A.device)
     Z[:, -1, -1] = torch.sign(torch.linalg.det(U @ V.transpose(1, 2)))
