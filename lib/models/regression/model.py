@@ -10,7 +10,6 @@ from lib.models.regression.encoder.resunet import ResUNet
 from lib.utils.loss import *
 from lib.utils.metrics import pose_error_torch, error_auc, A_metrics
 
-from lib.utils.solver import pnp
 
 
 class RegressionModel(pl.LightningModule):
@@ -178,95 +177,3 @@ class RegressionModel(pl.LightningModule):
                 opt, tcfg.LR_STEP_INTERVAL, tcfg.LR_STEP_GAMMA)
             return {'optimizer': opt, 'lr_scheduler': {'scheduler': scheduler, 'interval': 'step'}}
         return opt
-
-
-class RSCRegressionModel(RegressionModel):
-    """Regresses Relative Scene Coordinates between a pair of images"""
-
-    def __init__(self, cfg):
-        super().__init__(cfg)
-
-        try:
-            self.self_repro_loss = eval(cfg.TRAINING.SELF_REPRO_LOSS)
-        except NameError:
-            raise NotImplementedError(f'Invalid self-reprojection loss {cfg.TRAINING.SELF_REPRO_LOSS}')
-
-        # try:
-        #     self.cross_repro_loss = eval(cfg.TRAINING.CROSS_REPRO_LOSS)
-        # except NameError:
-        #     raise NotImplementedError(f'Invalid cross-reprojection loss {cfg.TRAINING.CROSS_REPRO_LOSS}')
-
-        # TODO: move into config
-        self.PNP_FLAGS = cv2.SOLVEPNP_SQPNP
-
-        # NOTE: delay to compute uv_grid until we have the first batch
-        self.single_uv_grid = None
-
-    def forward(self, data):
-        B = data['image0'].shape[0]
-        vol0 = self.encoder(data['image0'])
-        vol1 = self.encoder(data['image1'])
-        volume_q1k0 = self.aggregator(vol1, vol0)
-        out = self.head(volume_q1k0, data)
-
-        data['cross_xyz'] = out['cross_xyz']
-        data['self_uv'] = out['self_uv']
-        data['cross_uv'] = out['cross_uv']
-        data['vol_HW'] = volume_q1k0.shape[-2:]
-
-        self.set_single_uv_grid(data)
-        uv_grid = self.single_uv_grid.expand(B, -1, -1, -1)
-
-        with torch.no_grad():
-            # FIXME: do not hard-code dict key here
-            R, t = pnp(data['cross_xyz'], uv_grid, data['K_color1'], flags=self.PNP_FLAGS)
-
-        data['R'] = R.detach()
-        data['t'] = t.detach()
-        data['inliers'] = 0
-        return R, t
-
-    def loss_fn(self, data):
-        B = data['image0'].shape[0]
-
-        # FIXME: integrated into loss @data_wrapper
-        self.set_single_uv_grid(data)
-        uv_grid = self.single_uv_grid.expand(B, -1, -1, -1)
-        self_loss, info = self.self_repro_loss(data, uv_grid)
-        # cross_loss = self.cross_repro_loss(data)
-
-        valid_ratio = info['valid_count'] / info['total_count']
-        invalid_ratio = info['invalid_count'] / info['total_count']
-        self.log('train/valid_ratio', valid_ratio, batch_size=B)
-        self.log('train/invalid_ratio', invalid_ratio, batch_size=B)
-        self.log('train/valid_mean', info['valid_mean'], batch_size=B)
-        self.log('train/invalid_mean', info['invalid_mean'], batch_size=B)
-
-        # NOTE: Do not back-propagate through R, t
-        #       This is used to compat with the original implementation
-        with torch.no_grad():
-            R_loss = self.rot_loss(data)
-            t_loss = self.trans_loss(data)
-
-        loss = self_loss
-
-        return R_loss, t_loss, loss
-
-    def set_single_uv_grid(self, data):
-        assert 'vol_HW' in data, '"vol_HW" is not in data'
-
-        B, imD, imH, imW = data['image0'].shape
-        volH, volW = data['vol_HW']
-
-        is_updated = False
-        if self.single_uv_grid is None:
-            xs = torch.linspace(0, imW - 1, volW)
-            ys = torch.linspace(0, imH - 1, volH)
-            uv_grid = torch.stack(torch.meshgrid(ys, xs), dim=0).float()
-            uv_grid = uv_grid.unsqueeze(0).to(data['image0'].device)
-            self.single_uv_grid = uv_grid
-            is_updated = True
-
-        assert self.single_uv_grid.shape == (1, 2, volH, volW)
-
-        return is_updated

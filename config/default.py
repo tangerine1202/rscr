@@ -1,4 +1,6 @@
 from yacs.config import CfgNode as CN
+# disable autopep8 for this file
+# fmt: off 
 
 _CN = CN()
 
@@ -61,6 +63,8 @@ _CN.PROCRUSTES.REFINE = False      #refine pose with ICP
 
 # PNP RANSAC options
 _CN.PNP = CN()
+_CN.PNP.USE_RANSAC = True
+_CN.PNP.ALGO = 'ITERATIVE' # options: ['ITERATIVE', 'P3P', 'EPNP', 'SQPNP'] 
 _CN.PNP.RANSAC_ITER = None
 _CN.PNP.REPROJECTION_INLIER_THRESHOLD = None  # pixels
 _CN.PNP.CONFIDENCE = None

@@ -11,7 +11,8 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from config.default import cfg
 from lib.datasets.datamodules import DataModule
-from lib.models.regression.model import RegressionModel, RSCRegressionModel
+from lib.models.regression.model import RegressionModel
+from lib.models.regression.rscr_model import RSCRegressionModel
 
 
 def main(args):
@@ -57,7 +58,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('config', help='path to config file')
     parser.add_argument('dataset_config', help='path to dataset config file')
-    parser.add_argument('--experiment', help='experiment name', default='default')
+    parser.add_argument('--experiment', '-n', help='experiment name', default='default')
     parser.add_argument('--resume', help='resume from checkpoint path', default=None)
     args = parser.parse_args()
 

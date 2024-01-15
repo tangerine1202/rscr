@@ -2,6 +2,8 @@ import numpy as np
 import cv2 as cv
 import open3d as o3d
 
+import logging
+
 
 def backproject_3d(uv, depth, K):
     '''
@@ -177,9 +179,11 @@ class PnPSolver:
 
     def __init__(self, cfg):
         # PnP RANSAC parameters
+        self.use_ransac = cfg.PNP.USE_RANSAC
         self.ransac_iterations = cfg.PNP.RANSAC_ITER
         self.reprojection_inlier_threshold = cfg.PNP.REPROJECTION_INLIER_THRESHOLD
         self.confidence = cfg.PNP.CONFIDENCE
+        self.pnp_flags = getattr(cv, f'SOLVEPNP_{cfg.PNP.ALGO}')
 
     def estimate_pose(self, pts0, pts1, data):
         # uses nearest neighbour
@@ -205,19 +209,38 @@ class PnPSolver:
         K1 = data['K_color1'].squeeze(0)
         xyz_0 = backproject_3d(pts0, depth_pts0, K0).numpy()
 
-        # get relative pose using PnP + RANSAC
-        succ, rvec, tvec, inliers = cv.solvePnPRansac(
-            xyz_0, pts1, K1.numpy(),
-            None, iterationsCount=self.ransac_iterations,
-            reprojectionError=self.reprojection_inlier_threshold, confidence=self.confidence,
-            flags=cv.SOLVEPNP_P3P)
+        R, t, n_inliers = self.safe_pnp_ransac(xyz_0, pts1, K1)
+        return R, t, n_inliers
 
-        # refine with iterative PnP using inliers only
-        if succ and len(inliers) >= 6:
-            succ, rvec, tvec, _ = cv.solvePnPGeneric(xyz_0[inliers], pts1[inliers], K1.numpy(
-            ), None, useExtrinsicGuess=True, rvec=rvec, tvec=tvec, flags=cv.SOLVEPNP_ITERATIVE)
-            rvec = rvec[0]
-            tvec = tvec[0]
+    def estimate_pose(self, xyz_0, pts1, K1):
+        assert len(xyz_0.shape) == 2
+        assert len(pts1.shape) == 2
+        assert xyz_0.shape[-1] == 3
+        assert pts1.shape[-1] == 2
+
+        R, t, n_inliers = self.safe_pnp_ransac(xyz_0, pts1, K1)
+        return R, t, n_inliers
+
+    def safe_pnp_ransac(self, xyz_0, pts1, K1):
+        # get relative pose using PnP + RANSAC
+        if not isinstance(K1, np.ndarray):
+            K1 = K1.numpy()
+
+        if self.use_ransac:
+            succ, rvec, tvec, inliers = cv.solvePnPRansac(
+                xyz_0, pts1, K1,
+                None, iterationsCount=self.ransac_iterations,
+                reprojectionError=self.reprojection_inlier_threshold, confidence=self.confidence,
+                flags=cv.SOLVEPNP_P3P)
+            # refine with iterative PnP using inliers only
+            if succ and len(inliers) >= 6:
+                succ, rvec, tvec, _ = cv.solvePnPGeneric(xyz_0[inliers], pts1[inliers], K1,
+                                                         None, useExtrinsicGuess=True, rvec=rvec, tvec=tvec, flags=self.pnp_flags)
+                rvec = rvec[0]
+                tvec = tvec[0]
+        else:
+            succ, rvec, tvec = cv.solvePnP(xyz_0, pts1, K1, None, flags=self.pnp_flags)
+            inliers = np.arange(len(xyz_0))
 
         # avoid degenerate solutions
         if succ:

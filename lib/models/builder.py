@@ -1,6 +1,7 @@
 import torch.cuda
 
-from lib.models.regression.model import RegressionModel, RSCRegressionModel
+from lib.models.regression.model import RegressionModel
+from lib.models.regression.rscr_model import RSCRegressionModel
 from lib.models.matching.model import FeatureMatchingModel
 
 
