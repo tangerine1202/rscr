@@ -264,13 +264,13 @@ def self_repro_loss(data, uvgt_B2HW):
     B, _, H, W = uvgt_B2HW.shape
     N = H * W
 
-    assert data['cross_xyz'].shape == (B, 3, H, W)
-    assert data['self_uv'].shape == (B, 2, H, W)
+    assert data['xyz1_0_B3HW'].shape == (B, 3, H, W)
+    assert data['uv1_1_B2HW'].shape == (B, 2, H, W)
     assert data['K_color1'].shape == (B, 3, 3)
 
-    cross_xyz_B3HW = data['cross_xyz']
+    cross_xyz_B3HW = data['xyz1_0_B3HW']
     cross_xyz_B3N = cross_xyz_B3HW.view(B, 3, -1)
-    self_uv_B2HW = data['self_uv']
+    self_uv_B2HW = data['uv1_1_B2HW']
     self_uv_B2N = self_uv_B2HW.view(B, 2, -1)
 
     self_K_B33 = data['K_color1'].float()

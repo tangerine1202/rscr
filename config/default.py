@@ -15,6 +15,9 @@ _CN.ENCODER.NUM_BLOCKS = None  # # blocks per layer separated by dashes. e.g. 3-
 _CN.ENCODER.BLOCK_TYPE = None  # 0:PreactBlock, 1:PreactBlockBottleneck
 _CN.ENCODER.NOT_CONCAT = None  # ResUNet option
 _CN.ENCODER.NUM_OUT_LAYERS = None  # ResUNet option
+_CN.ENCODER.SHOULD_LOAD_PRETRAINED = False   # True/False. If True, loads pretrained weights from PRETRAINED_PATH
+_CN.ENCODER.PRETRAINED_PATH = None           # path to pretrained weights
+_CN.ENCODER.SHOULD_FREEZE_PRETRAINED = None  # True/False. If True, freezes pretrained weights
 
 _CN.AGGREGATOR = CN()
 _CN.AGGREGATOR.TYPE = None  # options: ['CorrelationVolumeWarping', 'CorrelationVolumeWarpingQKV']

@@ -6,6 +6,7 @@ from lib.models.regression.aggregator import *
 from lib.models.regression.head import *
 from lib.models.regression.encoder.resnet import ResNet
 from lib.models.regression.encoder.resunet import ResUNet
+from lib.models.regression.encoder.acebackbone import AceBackbone
 
 from lib.utils.loss import *
 from lib.utils.metrics import pose_error_torch, error_auc, A_metrics
