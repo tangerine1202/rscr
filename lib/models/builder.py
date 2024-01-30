@@ -2,7 +2,7 @@ import torch.cuda
 
 from lib.models.matching.model import FeatureMatchingModel
 from lib.models.regression.model import RegressionModel
-from lib.models.regression.rscr_model import *
+from lib.models.rscr.model import *
 
 
 def build_model(cfg, checkpoint=''):

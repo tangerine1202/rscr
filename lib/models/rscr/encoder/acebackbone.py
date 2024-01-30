@@ -1,8 +1,9 @@
+import pytorch_lightning as pl
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms.functional as VF
 
-class AceBackbone(nn.Module):
+class AceBackbone(pl.LightningModule):
     """
     The feature extractor backbone used in the ACE model.
 

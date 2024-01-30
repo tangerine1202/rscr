@@ -1,4 +1,4 @@
-import math
+import numpy as np
 import inspect
 import logging
 
@@ -20,8 +20,10 @@ def data_wrapper(func):
         arguments = {'R': data['R'],
                      't': data['t'],
                      'Rgt': data['T_0to1'][:, :3, :3],
-                     'tgt': data['T_0to1'][:, :3, 3:].transpose(1, 2)
-                     }
+                     'tgt': data['T_0to1'][:, :3, 3:].transpose(1, 2),
+                     'K0': data['K_color0'].float(),
+                     'K1': data['K_color1'].float(),
+                    }
 
         # add quaternion ground-truth, if using quat. loss functions
         if 'q' in arg_list:
@@ -65,16 +67,34 @@ def data_wrapper(func):
             t_direction_gt = F.normalize(arguments['tgt'], dim=-1).reshape(-1, 3)
             t_sph_theta_gt = torch.acos(t_direction_gt[:, 2])
             t_sph_phi_gt = torch.atan2(t_direction_gt[:, 1], t_direction_gt[:, 0] + 1e-5)
-            t_sph_phi_gt[t_sph_phi_gt < 0] += 2 * math.pi
+            t_sph_phi_gt[t_sph_phi_gt < 0] += 2 * np.pi
             t_sph_theta_gt = torch.clamp(torch.round(torch.rad2deg(t_sph_theta_gt)).long(), 0, 179)
             t_sph_phi_gt = torch.round(torch.rad2deg(t_sph_phi_gt)).long()
             t_sph_phi_gt[t_sph_phi_gt == 360] = 0
             arguments['t_sph_phigt'] = t_sph_phi_gt
             arguments['t_sph_thetagt'] = t_sph_theta_gt
+        
+        if 'uvgt_B2HW' in arg_list:
+            arguments['uvgt_B2HW'] = data['uvgt_B2HW']
+        if 'xyz1_0_B3HW' in arg_list:
+            arguments['xyz1_0_B3HW'] = data['xyz1_0_B3HW']
+        if 'xyz1_1_B3HW' in arg_list:
+            arguments['xyz1_1_B3HW'] = data['xyz1_1_B3HW']
+        if 'uv1_1_B2HW' in arg_list:
+            arguments['uv1_1_B2HW'] = data['uv1_1_B2HW']
+
+        if 'lcfg' in arg_list:
+            arguments['lcfg'] = data['loss_cfg']
+        
+        if 'current_optim_step' in arg_list:
+            arguments['current_optim_step'] = data['current_optim_step']
+        if 'total_optim_step' in arg_list:
+            arguments['total_optim_step'] = data['total_optim_step']
 
         # get argument values and returns function result on arguments
         arg_value = [arguments[x] for x in arg_list]
         return func(*arg_value)
+
     return wrapped
 
 
@@ -220,7 +240,7 @@ def trans_ang_loss(t, tgt):
     cosine = (t @ tgt.transpose(1, 2)).squeeze(-1) / (scale_t * scale_tgt + 1e-6)
     cosine = torch.clip(cosine, -0.99999, 0.99999)  # handle numerical errors and NaNs
     t_ang_err = torch.acos(cosine)
-    t_ang_err = torch.minimum(t_ang_err, math.pi - t_ang_err)
+    t_ang_err = torch.minimum(t_ang_err, np.pi - t_ang_err)
     return F.l1_loss(t_ang_err, torch.zeros_like(t_ang_err))
 
 
@@ -241,81 +261,94 @@ def trans_scale_l1_loss(scale, scalegt):
 def empty_loss(tgt):
     return torch.zeros(1, device=tgt.device, dtype=torch.float32)
 
-# RSCR loss
 
-
-def self_repro_loss(data, uvgt_B2HW):
+@data_wrapper
+def self_repro_loss(Rgt, tgt, K1, 
+                    uvgt_B2HW, 
+                    xyz1_0_B3HW, xyz1_1_B3HW, uv1_1_B2HW,
+                    current_optim_step, total_optim_step, lcfg):
     """Computes self-reprojection loss between uv and uvgt
-    Input:
-    data - dictionary with keys:
-        'cross_xyz' - RSC [B, 3, H, W]
-        'self_uv' - reprojected uv coordinates of the same image [B, 2, H, W]
-        'K_color1' - camera intrinsics [B, 3, 3]
-    uvgt - ground-truth uv coordinates [B, 2, ...]
-    Output: reprojection_loss
     """
-
-    DEPTH_MIN = 0.1
-    DEPTH_MAX = 1000
-    DEPTH_TARGET = 10
-    REPRO_LOSS_HARD_CLAMP = 1000
-    # REPRO_LOSS_SOFT_CLAMP = 50
-
-    B, _, H, W = uvgt_B2HW.shape
+    B, _, H, W = xyz1_0_B3HW.shape
     N = H * W
 
-    assert data['xyz1_0_B3HW'].shape == (B, 3, H, W)
-    assert data['uv1_1_B2HW'].shape == (B, 2, H, W)
-    assert data['K_color1'].shape == (B, 3, 3)
-
-    cross_xyz_B3HW = data['xyz1_0_B3HW']
-    cross_xyz_B3N = cross_xyz_B3HW.view(B, 3, -1)
-    self_uv_B2HW = data['uv1_1_B2HW']
-    self_uv_B2N = self_uv_B2HW.view(B, 2, -1)
-
-    self_K_B33 = data['K_color1'].float()
-    self_invK_B33 = torch.inverse(self_K_B33)
+    K1_B33 = K1
+    inv_K1_B33 = torch.inverse(K1_B33)
+    R_0to1 = Rgt
+    t_0to1 = tgt.transpose(1, 2)
+    R_1to0 = R_0to1.transpose(1, 2)
+    t_1to0 = -torch.bmm(R_1to0, t_0to1)
+    assert K1_B33.shape == (B, 3, 3)
+    assert R_0to1.shape == (B, 3, 3)
+    assert t_0to1.shape == (B, 3, 1)
+    assert R_1to0.shape == (B, 3, 3)
+    assert t_1to0.shape == (B, 3, 1)
+    assert uvgt_B2HW.shape == (B, 2, H, W), f'uvgt_B2HW.shape != (B, 2, H, W), got {uvgt_B2HW.shape}'
 
     uvgt_B2N = uvgt_B2HW.view(B, 2, -1)
-    # Handle the invalid predictions: generate proxy coordinate targets with constant depth assumption.
-    dummy_xyz_B3HW = torch.cat([uvgt_B2HW, torch.ones_like(uvgt_B2HW[:, :1])], dim=1)
-    dummy_xyz_B3N = dummy_xyz_B3HW.view(B, 3, -1)
-    dummy_xyz_B3N = DEPTH_TARGET * torch.bmm(self_invK_B33, dummy_xyz_B3N)
+    # self-reprojection
+    xyz1_1_B3N = xyz1_1_B3HW.view(B, 3, -1)
+    uv1_1_B2N = uv1_1_B2HW.view(B, 2, -1)
 
-    assert self_uv_B2N.shape == (B, 2, N)
-    assert cross_xyz_B3N.shape == (B, 3, N)
-    assert self_K_B33.shape == (B, 3, 3)
-    assert self_invK_B33.shape == (B, 3, 3)
+    # reprojection error
+    repro_errs_BN = torch.norm(uv1_1_B2N - uvgt_B2N, dim=1, p=1)
+    assert repro_errs_BN.shape == (B, N), f'repro_errs_BN.shape != ({B}, {N}), got {repro_errs_BN.shape}'
 
-    assert uvgt_B2HW.shape == (B, 2, H, W)
-    assert dummy_xyz_B3HW.shape == (B, 3, H, W)
-    assert dummy_xyz_B3N.shape == (B, 3, N)
+    # proxy 3D coordinate targets with constant depth assumption.
+    dummy_xyz_B3N = torch.cat([uvgt_B2N, torch.ones_like(uvgt_B2N[:, :1])], dim=1)
+    dummy_xyz_B3N = lcfg.DEPTH_TARGET * torch.bmm(inv_K1_B33, dummy_xyz_B3N)
+    assert dummy_xyz_B3N.shape == (B, 3, N), f'dummy_xyz_B3N.shape != ({B}, 3, {N}), got {dummy_xyz_B3N.shape}'
 
-    repro_errs_BN = torch.norm(self_uv_B2N - uvgt_B2N, dim=1, p=1)
-    assert repro_errs_BN.shape == (B, N)
-
-    #
-    # Compute masks used to ignore invalid pixels.
-    #
+    # === Compute masks for invalid pixels ===
     # Predicted coordinates behind or close to camera plane.
-    invalid_min_depth_BN = cross_xyz_B3N[:, 2] <= DEPTH_MIN
+    # NOTE: negative depth is clamped at +DEPTH_MIN, so we need to mask them out.
+    invalid_min_depth_BN = xyz1_1_B3N[:, 2] <= lcfg.DEPTH_MIN
     # Predicted coordinates beyond max distance.
-    invalid_max_depth_BN = cross_xyz_B3N[:, 2] > DEPTH_MAX
+    invalid_max_depth_BN = xyz1_1_B3N[:, 2] > lcfg.DEPTH_MAX
     # Very large reprojection errors.
-    invalid_repro_BN = repro_errs_BN > REPRO_LOSS_HARD_CLAMP
+    invalid_repro_BN = repro_errs_BN > lcfg.REPRO_HARD_CLAMP
     # Invalid mask is the union of all these. Valid mask is the opposite.
     invalid_mask_BN = (invalid_min_depth_BN | invalid_repro_BN | invalid_max_depth_BN)
     valid_mask_BN = ~invalid_mask_BN
     assert invalid_mask_BN.shape == (B, N)
 
-    # valid reprojection error
+    # Valid pixels: robust reprojection error
     valid_repro_errs = repro_errs_BN[valid_mask_BN]
-    loss_valid = valid_repro_errs
+    if lcfg.REPRO_TYPE == 'l1+sqrt':
+        soft_clamp_mask = valid_repro_errs <= lcfg.REPRO_SOFT_CLAMP
+        loss_valid_l1 = valid_repro_errs[soft_clamp_mask]
+        loss_valid_sqrt = torch.sqrt(lcfg.REPRO_SOFT_CLAMP * valid_repro_errs[~soft_clamp_mask])
+        valid_loss_cnt = len(loss_valid_l1) + len(loss_valid_sqrt)
+        loss_valid  = loss_valid_l1.sum() + loss_valid_sqrt.sum()
+    elif lcfg.REPRO_TYPE == 'tanh':
+        valid_repro_errs = weighted_tanh(valid_repro_errs, lcfg.REPRO_SOFT_CLAMP)
+        valid_loss_cnt = len(valid_repro_errs)
+        loss_valid = valid_repro_errs.sum()
+    elif lcfg.REPRO_TYPE == 'dyntanh':
+        # FIXME: schedule based on epoch, not optim step, may not a good method
+        schedule_weight = current_optim_step / total_optim_step
+        # TODO: Optionally scale it if using the circular schedule
+        schedule_weight = 1 - np.sqrt(1 - schedule_weight ** 2)
+        weight = (1 - schedule_weight) * lcfg.REPRO_SOFT_CLAMP + lcfg.REPRO_SOFT_CLAMP_MIN
+        valid_repro_errs = weighted_tanh(valid_repro_errs, weight)
+        valid_loss_cnt = len(valid_repro_errs)
+        loss_valid = valid_repro_errs.sum()
+    elif lcfg.REPRO_TYPE == 'sc_init':
+        # NOTE: use the proxy target for scene coordinate initialization
+        invalid_mask_BN = torch.ones_like(invalid_mask_BN)
+        valid_loss_cnt = 0
+        loss_valid = torch.tensor([0])
+    else:
+        raise NotImplementedError(f'Unknown REPRO_TYPE: {lcfg.REPRO_TYPE}')
 
-    # Compute the distance to target camera coordinates.
-    loss_invalid = torch.norm(cross_xyz_B3N - dummy_xyz_B3N, dim=1, p=2).masked_select(invalid_mask_BN)
+    # Invalid pixels: distance to the proxy 3D target
+    loss_invalid = torch.abs(xyz1_1_B3N - dummy_xyz_B3N).sum(dim=1).masked_select(invalid_mask_BN)
+    invalid_loss_cnt = len(loss_invalid)
 
-    assert len(loss_valid) + len(loss_invalid) == B * N
+    assert valid_loss_cnt + invalid_loss_cnt == B * N
+    loss = loss_valid.sum() + loss_invalid.sum()
+    loss = loss / (B * H * W)
+
     n_fails_in_loss_valid = torch.isnan(loss_valid).sum() + torch.isinf(loss_valid).sum()
     n_fails_in_loss_invalid = torch.isnan(loss_invalid).sum() + torch.isinf(loss_invalid).sum()
     if n_fails_in_loss_valid > 0:
@@ -323,15 +356,13 @@ def self_repro_loss(data, uvgt_B2HW):
     if n_fails_in_loss_invalid > 0:
         logging.warning(f'{n_fails_in_loss_invalid} NaNs or INFs in loss_invalid')
 
-    loss = loss_valid.sum() + loss_invalid.sum()
-    loss = loss / (B * N)
-
     info = {
-        'total_count': B * N,
-        'valid_count': len(loss_valid),
-        'invalid_count': len(loss_invalid),
-        'valid_mean': loss_valid.mean().item() if len(loss_valid) > 0 else 0.0,
-        'invalid_mean': loss_invalid.mean().item() if len(loss_invalid) > 0 else 0.0,
+        'total_count': B * H * W,
+        'valid_count': valid_loss_cnt,
+        'invalid_count': invalid_loss_cnt,
     }
 
     return loss, info
+
+def weighted_tanh(repro_errs, weight):
+    return weight * torch.tanh(repro_errs / weight)

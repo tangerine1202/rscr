@@ -12,7 +12,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from config.default import cfg
 from lib.datasets.datamodules import DataModule
 from lib.models.regression.model import RegressionModel
-from lib.models.regression.rscr_model import *
+from lib.models.rscr.model import *
 
 
 def main(args):

@@ -116,7 +116,18 @@ _CN.TRAINING.GRAD_CLIP = 0.   #  Indicates the L2 norm at which to clip the grad
 _CN.TRAINING.ROT_LOSS = 'rot_frobenius_loss'  # options: ['rot_frobenius_loss', 'rot_l1_loss', 'rot_angle_loss']
 _CN.TRAINING.TRANS_LOSS = 'trans_l2_loss'     # options: ['trans_l2_loss', 'trans_ang_loss']
 _CN.TRAINING.LAMBDA = 1.0  # scaling term for the translation loss term. If 0.0, learns optimal weighting.
-_CN.TRAINING.SELF_REPRO_LOSS = None  # options: []
+
+############# CUSTOM LOSS  #############
+_CN.TRAINING.CUSTOM_LOSS = CN()
+_CN.TRAINING.CUSTOM_LOSS.TYPE = None  # options: ['self_repro_loss']
+# Reprojection settings
+_CN.TRAINING.CUSTOM_LOSS.DEPTH_MIN = None
+_CN.TRAINING.CUSTOM_LOSS.DEPTH_MAX = None
+_CN.TRAINING.CUSTOM_LOSS.DEPTH_TARGET = None
+_CN.TRAINING.CUSTOM_LOSS.REPRO_HARD_CLAMP = None
+_CN.TRAINING.CUSTOM_LOSS.REPRO_SOFT_CLAMP = None
+_CN.TRAINING.CUSTOM_LOSS.REPRO_SOFT_CLAMP_MIN = None
+_CN.TRAINING.CUSTOM_LOSS.REPRO_TYPE = None
 
 
 cfg = _CN

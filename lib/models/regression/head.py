@@ -324,24 +324,3 @@ class AngularBinsDeepResBlockMLP(DeepResBlock):
         t = t.view(B, 1, 3)
         return R, t
 
-
-class DeepRSCRBlock(torch.nn.Module):
-    def __init__(self, cfg, in_channels):
-        super().__init__()
-        # NOTE: if necessary, move options to config
-
-        # all 1x1 conv
-        self.mlp = torch.nn.Sequential(
-            *[
-
-                torch.nn.LazyConv2d(256, 1, 1, 0, bias=True),
-                torch.nn.ReLU(),
-                torch.nn.Conv2d(256, 128, 1, 1, 0, bias=True),
-                torch.nn.ReLU(),
-                torch.nn.Conv2d(128, 3, 1, 1, 0, bias=True),
-            ])
-
-    def forward(self, feature_volume):
-        x = self.mlp(feature_volume)
-        return x
-
