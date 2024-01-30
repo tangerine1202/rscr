@@ -10,6 +10,8 @@ data/
 outputs/
 results/
 weights/
+# soft link of weights folder
+weights
 
 # scripts for running experiments
 .idea/
