@@ -90,6 +90,12 @@ def data_wrapper(func):
             arguments['current_optim_step'] = data['current_optim_step']
         if 'total_optim_step' in arg_list:
             arguments['total_optim_step'] = data['total_optim_step']
+        
+        # hybrid method
+        if 'rpr_R_1to0' in arg_list:
+            arguments['rpr_R_1to0'] = data['rpr_R_1to0']
+        if 'rpr_t_1to0' in arg_list:
+            arguments['rpr_t_1to0'] = data['rpr_t_1to0'].transpose(1, 2)
 
         # get argument values and returns function result on arguments
         arg_value = [arguments[x] for x in arg_list]
@@ -274,15 +280,15 @@ def self_repro_loss(Rgt, tgt, K1,
 
     K1_B33 = K1
     inv_K1_B33 = torch.inverse(K1_B33)
-    R_0to1 = Rgt
-    t_0to1 = tgt.transpose(1, 2)
-    R_1to0 = R_0to1.transpose(1, 2)
-    t_1to0 = -torch.bmm(R_1to0, t_0to1)
     assert K1_B33.shape == (B, 3, 3)
-    assert R_0to1.shape == (B, 3, 3)
-    assert t_0to1.shape == (B, 3, 1)
-    assert R_1to0.shape == (B, 3, 3)
-    assert t_1to0.shape == (B, 3, 1)
+    # R_0to1 = Rgt
+    # t_0to1 = tgt.transpose(1, 2)
+    # R_1to0 = R_0to1.transpose(1, 2)
+    # t_1to0 = -torch.bmm(R_1to0, t_0to1)
+    # assert R_0to1.shape == (B, 3, 3)
+    # assert t_0to1.shape == (B, 3, 1)
+    # assert R_1to0.shape == (B, 3, 3)
+    # assert t_1to0.shape == (B, 3, 1)
     assert uvgt_B2HW.shape == (B, 2, H, W), f'uvgt_B2HW.shape != (B, 2, H, W), got {uvgt_B2HW.shape}'
 
     uvgt_B2N = uvgt_B2HW.view(B, 2, -1)
@@ -314,17 +320,17 @@ def self_repro_loss(Rgt, tgt, K1,
 
     # Valid pixels: robust reprojection error
     valid_repro_errs = repro_errs_BN[valid_mask_BN]
-    if lcfg.REPRO_TYPE == 'l1+sqrt':
+    if lcfg.TYPE == 'l1+sqrt':
         soft_clamp_mask = valid_repro_errs <= lcfg.REPRO_SOFT_CLAMP
         loss_valid_l1 = valid_repro_errs[soft_clamp_mask]
         loss_valid_sqrt = torch.sqrt(lcfg.REPRO_SOFT_CLAMP * valid_repro_errs[~soft_clamp_mask])
         valid_loss_cnt = len(loss_valid_l1) + len(loss_valid_sqrt)
         loss_valid  = loss_valid_l1.sum() + loss_valid_sqrt.sum()
-    elif lcfg.REPRO_TYPE == 'tanh':
+    elif lcfg.TYPE == 'tanh':
         valid_repro_errs = weighted_tanh(valid_repro_errs, lcfg.REPRO_SOFT_CLAMP)
         valid_loss_cnt = len(valid_repro_errs)
         loss_valid = valid_repro_errs.sum()
-    elif lcfg.REPRO_TYPE == 'dyntanh':
+    elif lcfg.TYPE == 'dyntanh':
         # FIXME: schedule based on epoch, not optim step, may not a good method
         schedule_weight = current_optim_step / total_optim_step
         # TODO: Optionally scale it if using the circular schedule
@@ -333,13 +339,13 @@ def self_repro_loss(Rgt, tgt, K1,
         valid_repro_errs = weighted_tanh(valid_repro_errs, weight)
         valid_loss_cnt = len(valid_repro_errs)
         loss_valid = valid_repro_errs.sum()
-    elif lcfg.REPRO_TYPE == 'sc_init':
+    elif lcfg.TYPE == 'sc_init':
         # NOTE: use the proxy target for scene coordinate initialization
         invalid_mask_BN = torch.ones_like(invalid_mask_BN)
         valid_loss_cnt = 0
         loss_valid = torch.tensor([0])
     else:
-        raise NotImplementedError(f'Unknown REPRO_TYPE: {lcfg.REPRO_TYPE}')
+        raise NotImplementedError(f'Unknown Reprojection loss type: {lcfg.TYPE}')
 
     # Invalid pixels: distance to the proxy 3D target
     loss_invalid = torch.abs(xyz1_1_B3N - dummy_xyz_B3N).sum(dim=1).masked_select(invalid_mask_BN)
@@ -366,3 +372,20 @@ def self_repro_loss(Rgt, tgt, K1,
 
 def weighted_tanh(repro_errs, weight):
     return weight * torch.tanh(repro_errs / weight)
+
+@data_wrapper
+def inv_rpr_l1_loss(rpr_R_1to0, rpr_t_1to0, Rgt, tgt):
+    B = Rgt.shape[0]
+    assert rpr_R_1to0.shape == (B, 3, 3)
+    assert rpr_t_1to0.shape == (B, 3, 1)
+    assert tgt.shape == (B, 1, 3)
+
+    inv_Rgt = Rgt.transpose(1, 2)
+    inv_tgt = -torch.bmm(inv_Rgt, tgt.transpose(1, 2))
+
+    eye_batch = torch.eye(3).unsqueeze(0).repeat(B, 1, 1).to(rpr_R_1to0.device)
+    R_residual = inv_Rgt.transpose(1, 2) @ rpr_R_1to0
+    R_loss = F.l1_loss(R_residual, eye_batch)
+    
+    t_loss = F.l1_loss(rpr_t_1to0, inv_tgt)
+    return R_loss, t_loss

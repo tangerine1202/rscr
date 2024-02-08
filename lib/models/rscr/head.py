@@ -5,6 +5,7 @@ import pytorch_lightning as pl
 from kornia.geometry.conversions import quaternion_to_rotation_matrix, QuaternionCoeffOrder
 from scipy.spatial.transform import Rotation
 
+from lib.models.regression.head import DeepResBlock
 from lib.models.regression.encoder.preact import PreActBlock
 from lib.utils.solver import procrustes
 from lib.utils.rotationutils import rotation_matrix_from_ortho6d
@@ -27,6 +28,27 @@ class Deep1x1BlockMLP(pl.LightningModule):
     def forward(self, feature_volume):
         x = self.mlp1x1(feature_volume)
         return x
+
+
+class DirectDeepTranslationMLP(DeepResBlock):
+    def __init__(self, cfg, in_channels):
+        super().__init__(cfg, in_channels)
+
+        self.mlp = torch.nn.Sequential(
+            *[
+                torch.nn.LazyLinear(256, bias=True),
+                torch.nn.ReLU(),
+                torch.nn.Linear(256, 128, bias=True),
+                torch.nn.ReLU(),
+                torch.nn.Linear(128, 3, bias=True)
+            ])
+
+    def forward(self, feature_volume, data):
+        B = feature_volume.shape[0]
+        x = super().forward(feature_volume)
+        out = self.mlp(x).view(B, 3)
+
+        return out
 
 
 class NaiveSCHead(Deep1x1BlockMLP):
