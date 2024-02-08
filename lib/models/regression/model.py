@@ -39,7 +39,7 @@ class RegressionModel(pl.LightningModule):
             head = eval(cfg.HEAD.TYPE)
         except NameError:
             raise NotImplementedError(f'Invalid head {cfg.HEAD.TYPE}')
-        self.head = head(cfg, self.aggregator.num_out_layers)
+        self.head = head(cfg.HEAD, self.aggregator.num_out_layers)
 
         # initialise loss function
         try:

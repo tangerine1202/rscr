@@ -1,4 +1,5 @@
 import math
+import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 from kornia.geometry.conversions import quaternion_to_rotation_matrix, QuaternionCoeffOrder
@@ -9,11 +10,10 @@ from lib.utils.solver import procrustes
 from lib.utils.rotationutils import rotation_matrix_from_ortho6d
 
 
-class ResBlockMLP(torch.nn.Module):
+class ResBlockMLP(pl.LightningModule):
     def __init__(self, cfg, in_channels):
         super().__init__()
 
-        H, W = cfg.DATASET.HEIGHT, cfg.DATASET.WIDTH
         self.resblock1 = PreActBlock(in_channels, 256, stride=2)
         self.resblock2 = PreActBlock(256, 128, stride=2)
 
@@ -26,12 +26,12 @@ class ResBlockMLP(torch.nn.Module):
         return x
 
 
-class DeepResBlock(torch.nn.Module):
+class DeepResBlock(pl.LightningModule):
     def __init__(self, cfg, in_channels):
         super().__init__()
 
-        bn = cfg.HEAD.BATCH_NORM
-        self.avg_pool = cfg.HEAD.AVG_POOL
+        bn = cfg.BATCH_NORM
+        self.avg_pool = cfg.AVG_POOL
         self.resblock1 = PreActBlock(in_channels, 64, stride=2, bn=bn)
         self.resblock2 = PreActBlock(64, 128, stride=2, bn=bn)
         self.resblock3 = PreActBlock(128, 256, stride=2, bn=bn)
@@ -56,8 +56,8 @@ class ProcrustesResBlockMLP(ResBlockMLP):
     def __init__(self, cfg, in_channels):
         super().__init__(cfg, in_channels)
 
-        self.add_basis = cfg.HEAD.ADD_BASIS
-        self.num_pts = cfg.HEAD.NUM_PTS
+        self.add_basis = cfg.ADD_BASIS
+        self.num_pts = cfg.NUM_PTS
         assert self.num_pts == 3 or (self.num_pts % 2 == 0 and self.num_pts >=
                                      6), 'num_pts must be 3, 6 or a multiple of 2 higher than 6'
 
@@ -109,8 +109,8 @@ class ProcrustesDeepResBlock(DeepResBlock):
     def __init__(self, cfg, in_channels):
         super().__init__(cfg, in_channels)
 
-        self.add_basis = cfg.HEAD.ADD_BASIS
-        self.num_pts = cfg.HEAD.NUM_PTS
+        self.add_basis = cfg.ADD_BASIS
+        self.num_pts = cfg.NUM_PTS
         assert self.num_pts == 3 or (self.num_pts % 2 == 0 and self.num_pts >=
                                      6), 'num_pts must be 3, 6 or a multiple of 2 higher than 6'
 
@@ -171,7 +171,7 @@ class QuatDeepResBlock(DeepResBlock):
 
         # if true, regress unitary translation vector (3D) + scale as a single scalar
         # else, regress scaled translation vector (3D)
-        self.regress_scale = cfg.HEAD.SEPARATE_SCALE
+        self.regress_scale = cfg.SEPARATE_SCALE
         self.output_dims = 8 if self.regress_scale else 7
 
         self.mlp = torch.nn.Sequential(
@@ -279,7 +279,7 @@ class AngularBinsDeepResBlockMLP(DeepResBlock):
     def __init__(self, cfg, in_channels):
         super().__init__(cfg, in_channels)
 
-        self.regress_scale_separately = cfg.HEAD.SEPARATE_SCALE
+        self.regress_scale_separately = cfg.SEPARATE_SCALE
 
         output_dims = 360 * 2 + 180  # 3 rotation angles, 360 bins X/Z, 180 bins Y
         output_dims += 360 + 180 + 1 if self.regress_scale_separately else 3
