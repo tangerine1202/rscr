@@ -3,23 +3,26 @@ from yacs.config import CfgNode as CN
 # fmt: off 
 
 _CN = CN()
+MODEL_CN = CN()
+MODEL_CN.SHOULD_FREEZE = None             # True/False. If True, freezes the weights
+MODEL_CN.SHOULD_LOAD_PRETRAINED = False   # True/False. If True, loads pretrained weights from PRETRAINED_PATH
+MODEL_CN.PRETRAINED_PATH = None           # path to pretrained weights
+MODEL_CN.PRETRAINED_CKPT = None           # path to pretrained checkpoint
+MODEL_CN.PRETRAINED_CKPT_MODULE = None    # module name in checkpoint
 
 ##############  Model    ##############
 _CN.MODEL = None  # options: ['Regression', 'FeatureMatching', 'RSCRegression']
 _CN.DEBUG = False
 
 # Regression model options
-_CN.ENCODER = CN()
+_CN.ENCODER = MODEL_CN.clone()
 _CN.ENCODER.TYPE = None   # options: ['ResNet', 'ResUNet']
 _CN.ENCODER.NUM_BLOCKS = None  # # blocks per layer separated by dashes. e.g. 3-3-3
 _CN.ENCODER.BLOCK_TYPE = None  # 0:PreactBlock, 1:PreactBlockBottleneck
 _CN.ENCODER.NOT_CONCAT = None  # ResUNet option
 _CN.ENCODER.NUM_OUT_LAYERS = None  # ResUNet option
-_CN.ENCODER.SHOULD_LOAD_PRETRAINED = False   # True/False. If True, loads pretrained weights from PRETRAINED_PATH
-_CN.ENCODER.PRETRAINED_PATH = None           # path to pretrained weights
-_CN.ENCODER.SHOULD_FREEZE_PRETRAINED = None  # True/False. If True, freezes pretrained weights
 
-_CN.AGGREGATOR = CN()
+_CN.AGGREGATOR = MODEL_CN.clone()
 _CN.AGGREGATOR.TYPE = None  # options: ['CorrelationVolumeWarping', 'CorrelationVolumeWarpingQKV']
 _CN.AGGREGATOR.POSITION_ENCODER = None   # True/False. If True adds two channel with average u,v coordinates of warp
 _CN.AGGREGATOR.POSITION_ENCODER_IM1 = None   # True/False. If True adds two channel with uniform u,v coordinates of im1
@@ -31,7 +34,7 @@ _CN.AGGREGATOR.CV_HALF_CHANNELS = False  # If True, computes correlation volume 
 _CN.AGGREGATOR.UPSAMPLE_POS_ENC = 0      # If >0, upsamples positional encoder with number of channels
 _CN.AGGREGATOR.DUSTBIN = False           # If True, creates dustbins to assign 'unmatched' features. Also learns a 'dustbin feature' to be used when warping feature maps
 
-_CN.HEAD = CN()
+_CN.HEAD = MODEL_CN.clone()
 _CN.HEAD.TYPE = None     # options: ['ProcrustesResBlockMLP', 'DirectResBlockMLP']
 _CN.BACKPROJECT_ANCHORS = None    # whether to backproject anchors to 3D or assume that HEAD already gives 3D points
 _CN.HEAD.ADD_BASIS = False        # if true, add orthonormal basis to MLP anchors, only valid if NUM_PTS=3 or 6
@@ -40,6 +43,17 @@ _CN.HEAD.AVG_POOL = False         # if true, reduce last feature volume to vecto
 _CN.HEAD.BATCH_NORM = True        # enable/disable batch-norm for head res-blocks
 _CN.HEAD.SEPARATE_SCALE = True    # For QuatDeepResblock: if True, regress scale separately (unitary translation vector (3D) + 1D scale); else, regress scaled translation vector (3D)
                                   # For AngularBinsResblock: if True, regress scale separately (bins for trans. angle + 1D scale); else, regress scaled translation vector
+
+# Hybrid model options
+_CN.SC_HEAD = MODEL_CN.clone()
+_CN.SC_HEAD.TYPE = None
+
+_CN.RPR_HEAD = MODEL_CN.clone()
+_CN.RPR_HEAD.TYPE = None
+_CN.RPR_HEAD.AVG_POOL = False         # if true, reduce last feature volume to vector using Global Avg. Pool. Otherwise, use ravel()
+_CN.RPR_HEAD.BATCH_NORM = True        # enable/disable batch-norm for head res-blocks
+_CN.RPR_HEAD.SEPARATE_SCALE = True    # For QuatDeepResblock: if True, regress scale separately (unitary translation vector (3D) + 1D scale); else, regress scaled translation vector (3D)
+                                      # For AngularBinsResblock: if True, regress scale separately (bins for trans. angle + 1D scale); else, regress scaled translation vector
 
 # Feature Matching Options
 _CN.FEATURE_MATCHING = None  # options: ['SIFT', 'Precomputed']
@@ -117,17 +131,15 @@ _CN.TRAINING.ROT_LOSS = 'rot_frobenius_loss'  # options: ['rot_frobenius_loss', 
 _CN.TRAINING.TRANS_LOSS = 'trans_l2_loss'     # options: ['trans_l2_loss', 'trans_ang_loss']
 _CN.TRAINING.LAMBDA = 1.0  # scaling term for the translation loss term. If 0.0, learns optimal weighting.
 
-############# CUSTOM LOSS  #############
-_CN.TRAINING.CUSTOM_LOSS = CN()
-_CN.TRAINING.CUSTOM_LOSS.TYPE = None  # options: ['self_repro_loss']
-# Reprojection settings
-_CN.TRAINING.CUSTOM_LOSS.DEPTH_MIN = None
-_CN.TRAINING.CUSTOM_LOSS.DEPTH_MAX = None
-_CN.TRAINING.CUSTOM_LOSS.DEPTH_TARGET = None
-_CN.TRAINING.CUSTOM_LOSS.REPRO_HARD_CLAMP = None
-_CN.TRAINING.CUSTOM_LOSS.REPRO_SOFT_CLAMP = None
-_CN.TRAINING.CUSTOM_LOSS.REPRO_SOFT_CLAMP_MIN = None
-_CN.TRAINING.CUSTOM_LOSS.REPRO_TYPE = None
+############# REPROJECTION LOSS  #############
+_CN.TRAINING.REPRO_LOSS = CN()
+_CN.TRAINING.REPRO_LOSS.TYPE = None  # options: ['sc_init', 'l1', 'l1+sqrt', 'dyntanh']
+_CN.TRAINING.REPRO_LOSS.DEPTH_MIN = None
+_CN.TRAINING.REPRO_LOSS.DEPTH_MAX = None
+_CN.TRAINING.REPRO_LOSS.DEPTH_TARGET = None
+_CN.TRAINING.REPRO_LOSS.REPRO_HARD_CLAMP = None
+_CN.TRAINING.REPRO_LOSS.REPRO_SOFT_CLAMP = None
+_CN.TRAINING.REPRO_LOSS.REPRO_SOFT_CLAMP_MIN = None
 
 
 cfg = _CN

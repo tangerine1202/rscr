@@ -16,11 +16,6 @@ HEAD:
   SEPARATE_SCALE: True
   AVG_POOL: True
 TRAINING:
-  BATCH_SIZE: 10
-  NUM_WORKERS: 10
-  SAMPLER: 'scene_balance'
-  N_SAMPLES_SCENE: 700
-  SAMPLE_WITH_REPLACEMENT: True
   LR: 1e-4
   LOG_INTERVAL: 50
   VAL_INTERVAL: 0.25
@@ -30,8 +25,3 @@ TRAINING:
   TRANS_LOSS: 'trans_sphbin_loss'
   LAMBDA: 1.
 BACKPROJECT_ANCHORS: False
-DATASET:
-  HEIGHT: 360
-  WIDTH: 270
-  MIN_OVERLAP_SCORE: 0.4  # [train only] discard data with overlap_score < min_overlap_score
-  MAX_OVERLAP_SCORE: 0.8  # [train only] discard data with overlap_score < min_overlap_score

@@ -14,5 +14,5 @@ DATASET:
   # WIDTH: 540  # original image size
   HEIGHT: 360
   WIDTH: 270
-  MIN_OVERLAP_SCORE: 0.4  # [train only] discard data with overlap_score < min_overlap_score
+  MIN_OVERLAP_SCORE: 0.2  # [train only] discard data with overlap_score < min_overlap_score
   MAX_OVERLAP_SCORE: 0.8  # [train only] discard data with overlap_score < min_overlap_score

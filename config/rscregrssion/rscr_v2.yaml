@@ -1,9 +1,9 @@
-MODEL: 'RSCRegression'
+MODEL: 'RSCR'
 ENCODER:
   TYPE: 'AceBackbone'
   NUM_OUT_LAYERS: 512 
+  SHOULD_FREEZE: False
   SHOULD_LOAD_PRETRAINED: True
-  SHOULD_FREEZE_PRETRAINED: False
   PRETRAINED_PATH: 'pretrained/ace_encoder_pretrained.pt'
 AGGREGATOR:
   TYPE: 'CorrelationVolumeWarpingQKV'
@@ -19,32 +19,17 @@ PNP:
   # REPROJECTION_INLIER_THRESHOLD: 3
   # CONFIDENCE: 0.9999
 TRAINING:
-  BATCH_SIZE: 8
-  NUM_WORKERS: 10
-  SAMPLER: 'scene_balance'
-  N_SAMPLES_SCENE: 500
-  SAMPLE_WITH_REPLACEMENT: True
   LR: 1e-4
-  LOG_INTERVAL: 50
-  VAL_INTERVAL: 0.25
-  VAL_BATCHES: 500
-  EPOCHS: 450 
   # loss
   ROT_LOSS: 'rot_angle_loss'
   TRANS_LOSS: 'trans_l1_loss'
   LAMBDA: 1.
-  CUSTOM_LOSS: 
-    TYPE: 'self_repro_loss'
+  REPRO_LOSS: 
+    TYPE: 'l1+sqrt'
     DEPTH_MIN: 0.1
     DEPTH_MAX: 1000
     DEPTH_TARGET: 5
     REPRO_HARD_CLAMP: 1000
     REPRO_SOFT_CLAMP: 50
     REPRO_SOFT_CLAMP_MIN: 1
-    REPRO_TYPE: 'l1+sqrt' # sc_init, then l1+sqrt, dyntanh
 BACKPROJECT_ANCHORS: False
-DATASET:
-  HEIGHT: 270
-  WIDTH: 360
-  MIN_OVERLAP_SCORE: 0.4  # [train only] discard data with overlap_score < min_overlap_score
-  MAX_OVERLAP_SCORE: 0.8  # [train only] discard data with overlap_score < min_overlap_score

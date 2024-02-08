@@ -4,10 +4,6 @@ TRAINING:
   SAMPLER: 'scene_balance'
   N_SAMPLES_SCENE: 500
   SAMPLE_WITH_REPLACEMENT: True
-  LOG_INTERVAL: 50
-  VAL_INTERVAL: 0.25
-  VAL_BATCHES: 500
-  EPOCHS: 50
 DATASET:
   DATA_SOURCE: '7Scenes'
   DATA_ROOT: 'data/sevenscenes'
@@ -21,5 +17,5 @@ DATASET:
   AUGMENTATION_TYPE: None
   HEIGHT: 270
   WIDTH: 360
-  MIN_OVERLAP_SCORE: 0.4  # [train only] discard data with overlap_score < min_overlap_score
+  MIN_OVERLAP_SCORE: 0.2  # [train only] discard data with overlap_score < min_overlap_score
   MAX_OVERLAP_SCORE: 0.8  # [train only] discard data with overlap_score < min_overlap_score
