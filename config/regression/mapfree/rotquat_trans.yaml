@@ -14,10 +14,6 @@ HEAD:
   SEPARATE_SCALE: False # trans. vector is regressed WITH scale, not using independent 1D scale
 TRAINING:
   LR: 1e-4
-  LOG_INTERVAL: 50
-  VAL_INTERVAL: 0.25
-  VAL_BATCHES: 500
-  EPOCHS: 50
   ROT_LOSS: 'quat_l1_loss'
   TRANS_LOSS: 'trans_l1_loss'
   LAMBDA: 0.
