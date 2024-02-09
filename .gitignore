@@ -13,6 +13,7 @@ data/
 # soft link
 data
 weights
+results
 pretrained/models
 
 # scripts for running experiments
