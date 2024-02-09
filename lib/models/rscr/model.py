@@ -63,14 +63,14 @@ class BaseRSCRModel(pl.LightningModule):
         self.cfg = cfg
 
         # initialise pose loss function for evaluation
-        # try:
-        #     self.eval_rot_loss = eval(cfg.TRAINING.ROT_LOSS)
-        # except NameError:
-        #     raise NotImplementedError(f'Invalid rotation loss {cfg.TRAINING.ROT_LOSS}')
-        # try:
-        #     self.eval_trans_loss = eval(cfg.TRAINING.TRANS_LOSS)
-        # except NameError:
-        #     raise NotImplementedError(f'Invalid translation loss {cfg.TRAINING.TRANS_LOSS}')
+        try:
+            self.eval_rot_loss = eval(cfg.TRAINING.ROT_LOSS)
+        except NameError:
+            raise NotImplementedError(f'Invalid rotation loss {cfg.TRAINING.ROT_LOSS}')
+        try:
+            self.eval_trans_loss = eval(cfg.TRAINING.TRANS_LOSS)
+        except NameError:
+            raise NotImplementedError(f'Invalid translation loss {cfg.TRAINING.TRANS_LOSS}')
 
         # initialise pose solver
         # FIXME: do not allow to config this? since we only support PnP now
@@ -173,7 +173,7 @@ class BaseRSCRModel(pl.LightningModule):
 
     def configure_optimizers(self):
         tcfg = self.cfg.TRAINING
-        opt = torch.optim.AdamW(self.parameters(), lr=tcfg.LR, eps=1e-6, amsgrad=True)
+        opt = torch.optim.Adam(self.parameters(), lr=tcfg.LR, eps=1e-6)
         if tcfg.LR_STEP_INTERVAL:
             scheduler = torch.optim.lr_scheduler.StepLR(
                 opt, tcfg.LR_STEP_INTERVAL, tcfg.LR_STEP_GAMMA)
