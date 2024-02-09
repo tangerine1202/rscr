@@ -1,5 +1,6 @@
 import argparse
 import os
+import time
 # do this before importing numpy! (doing it right up here in case numpy is dependency of e.g. json)
 os.environ["MKL_NUM_THREADS"] = "1"  # noqa: E402
 os.environ["NUMEXPR_NUM_THREADS"] = "1"  # noqa: E402
@@ -51,7 +52,11 @@ def main(args):
                          gradient_clip_val=cfg.TRAINING.GRAD_CLIP,
                          track_grad_norm=-1)
 
+    t0 = time.time()
+
     trainer.fit(model, datamodule, ckpt_path=args.resume)
+
+    print(f'Training took {(time.time() - t0) / 3600:.2f} hours')
 
 
 if __name__ == '__main__':
